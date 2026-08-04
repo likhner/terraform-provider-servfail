@@ -1,0 +1,32 @@
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  ci:
+    runs-on: ubuntu-slim
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: opentofu/setup-opentofu@v2
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./... -count=1
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+      - run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: tofu fmt -check -recursive examples/
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: check
+      - run: go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.25.0 generate --provider-name servfail
+        env:
+          GOTOOLCHAIN: auto
+      - run: git diff --exit-code docs/

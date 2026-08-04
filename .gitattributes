@@ -1,0 +1,8 @@
+.gitattributes text
+.gitignore     text
+*.go           -text diff=golang
+*.md           text diff=markdown
+*.mod          -text diff=golang
+*.tf           text
+*.yml          text
+go.sum         text -diff
