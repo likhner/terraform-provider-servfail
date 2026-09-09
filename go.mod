@@ -1,10 +1,10 @@
 module github.com/likhner/terraform-provider-servfail
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
-	golang.org/x/sync v0.22.0
+	golang.org/x/sync v0.23.0
 )
 
 require (
