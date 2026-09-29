@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -43,6 +44,7 @@ func (rejectSOA) ValidateString(_ context.Context, req validator.StringRequest, 
 var (
 	_ resource.ResourceWithConfigure   = (*recordResource)(nil)
 	_ resource.ResourceWithImportState = (*recordResource)(nil)
+	_ resource.ResourceWithModifyPlan  = (*recordResource)(nil)
 )
 
 type recordResource struct {
@@ -182,7 +184,12 @@ func (r *recordResource) Read(ctx context.Context, req resource.ReadRequest, res
 	}
 
 	zone := state.Zone.ValueString()
-	serverID := r.data.resolveServer(ctx, state.ServerID.ValueString(), zone, &resp.Diagnostics)
+	primary, err := r.data.currentPrimary(ctx, zone)
+	if err != nil {
+		resp.Diagnostics.AddError("Error looking up zone primary", err.Error())
+		return
+	}
+	serverID := r.data.resolveServer(ctx, cmp.Or(primary, state.ServerID.ValueString()), zone, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -217,6 +224,26 @@ func (r *recordResource) Read(ctx context.Context, req resource.ReadRequest, res
 
 func (r *recordResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	r.apply(ctx, req.Plan, &resp.State, &resp.Diagnostics)
+}
+
+func (r *recordResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if r.data == nil || req.Plan.Raw.IsNull() {
+		return
+	}
+	var serverID, zone types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("server_id"), &serverID)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("zone"), &zone)...)
+	if resp.Diagnostics.HasError() || serverID.IsNull() || serverID.IsUnknown() || zone.IsUnknown() {
+		return
+	}
+	primary, err := r.data.currentPrimary(ctx, zone.ValueString())
+	if err != nil || primary == "" || primary == serverID.ValueString() {
+		return
+	}
+	resp.Diagnostics.AddAttributeWarning(path.Root("server_id"), "server_id is not the zone's primary",
+		fmt.Sprintf("Zone %q is now on primary %q, but server_id is set to %q (was the zone moved?). "+
+			"Writes will go to the old server; update server_id or remove it to use the primary automatically.",
+			zone.ValueString(), primary, serverID.ValueString()))
 }
 
 func (r *recordResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

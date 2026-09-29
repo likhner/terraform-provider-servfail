@@ -44,6 +44,14 @@ func (pd *providerData) resolveServer(ctx context.Context, resourceServerID, zon
 	return primary
 }
 
+func (pd *providerData) currentPrimary(ctx context.Context, zone string) (string, error) {
+	primary, err := pd.client.GetPrimary(ctx, zone)
+	if client.NotFound(err) {
+		return "", nil
+	}
+	return primary, err
+}
+
 type servfailProvider struct {
 	version string
 }
